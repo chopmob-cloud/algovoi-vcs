@@ -1,0 +1,33 @@
+# Never commit product or secret material to a public repo.
+*.algv
+*.algv.bak*
+*.acv
+*.key
+*.pem
+*.p12
+*.pfx
+*_sk.*
+*_sk_*
+*ceks*
+*cek_*
+.env
+.env.*
+licence.key
+license.key
+release.json
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

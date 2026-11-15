@@ -1,0 +1,6 @@
+# Keep the repository LF so the docs render identically everywhere and the
+# template script runs on a Linux host without a CRLF fix-up.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

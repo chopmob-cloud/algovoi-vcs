@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algovoi.co.uk/schemas/vcs-addon.json",
+  "title": "AlgoVoi VCS addon manifest",
+  "description": "Describes an addon wheel for the Verifiable Archive engine: what it implements, which engine version it targets, and where the wheel lives. Schema version 0 (draft).",
+  "type": "object",
+  "required": ["name", "version", "kind", "engine"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "description": "Distribution name of the addon wheel.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "version": {
+      "description": "Addon version (PEP 440).",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Which engine extension point this addon implements.",
+      "type": "string",
+      "enum": ["storage", "signer", "custody"]
+    },
+    "engine": {
+      "description": "The engine distribution and version range this addon was built and tested against.",
+      "type": "object",
+      "required": ["distribution"],
+      "additionalProperties": false,
+      "properties": {
+        "distribution": { "const": "algovoi-doc-archive" },
+        "specifier": {
+          "description": "PEP 440 specifier, for example \">=0.1.6,<0.2\".",
+          "type": "string"
+        }
+      }
+    },
+    "entry": {
+      "description": "Dotted path to the implementing class, for example 'mypkg.backend:MyBackend'. The module must be import-safe without the provider SDK installed.",
+      "type": "string"
+    },
+    "requires": {
+      "description": "Extra pip extras that must be installed for this addon to work, for example ['mypkg[aws]'].",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "notes": {
+      "description": "Free text: custody versus storage semantics, network requirements, tested versions.",
+      "type": "string"
+    },
+    "homepage": { "type": "string", "format": "uri" },
+    "wheel_url": {
+      "description": "Direct URL to a published wheel, if the addon is distributed outside an index.",
+      "type": "string",
+      "format": "uri"
+    }
+  }
+}
