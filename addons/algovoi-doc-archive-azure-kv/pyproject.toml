@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algovoi-doc-archive-azure-kv"
+version = "0.1.0"
+description = "Azure Key Vault and Managed HSM key custody for the AlgoVoi Verifiable Archive, using an envelope-wrapped Falcon-1024 signing key"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+# cryptography for the AES-256-GCM envelope; pqcrypto for the Falcon-1024 operation itself. The
+# pqcrypto range mirrors the engine's own declared range — 1.0 removed the Falcon-1024 API — and does
+# not widen or narrow it.
+dependencies = [
+    "cryptography>=41",
+    "pqcrypto>=0.4.0,<1.0",
+]
+
+[project.optional-dependencies]
+azure = ["azure-keyvault-keys>=4.8", "azure-identity>=1.15"]
+test = ["pytest>=8", "azure-keyvault-keys>=4.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/algovoi_doc_archive_azure_kv"]

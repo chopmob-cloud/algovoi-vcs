@@ -12,6 +12,21 @@ from algovoi_doc_archive.backend import StorageBackend
 from algovoi_doc_archive.signer import Signer
 ```
 
+## What ships here
+
+Four first-party addons live in this repository under Apache-2.0. They are free to use, and each one is
+scored by the same [conformance suite](conformance/) as every other addon:
+
+| Addon | Kind | Contract | What it is for |
+|---|---|---|---|
+| [`algovoi-doc-archive-mirror`](algovoi-doc-archive-mirror) | storage | `StorageBackend` | Writes every entry to N backends, fails closed below quorum, and refuses to return bytes two copies disagree on. No dependencies. |
+| [`algovoi-doc-archive-azure-blob`](algovoi-doc-archive-azure-blob) | storage | `StorageBackend` | Azure Blob Storage, Azure Stack Hub, Azurite. Absence is `None`; every other failure is raised. |
+| [`algovoi-doc-archive-inmodule`](algovoi-doc-archive-inmodule) | signer | `Signer` | Delegates signing to a vendor HSM or signing service. Holds no key material and is never given a secret key. |
+| [`algovoi-doc-archive-azure-kv`](algovoi-doc-archive-azure-kv) | custody | `Signer` | Falcon-1024 key envelope-wrapped by Azure Key Vault or Managed HSM. |
+
+`addons/index.json` is generated from each addon's `addon.json` by `python tools/build_index.py`; CI fails
+if it is stale.
+
 ## 1. Storage backend
 
 Where archived bytes live. The engine ships a local-filesystem backend; AlgoVoi also ships an
@@ -79,14 +94,34 @@ implement `Signer`: that is the stable one.
 
 ## 4. Packaging an addon
 
-Declare the engine as a normal dependency so the resolver orders the install:
+An addon distributed **outside the bundle** — in this repository, or as a community wheel on a public
+index — must not declare the engine as a dependency. `algovoi-doc-archive` is a commercial package
+delivered through the suite store; it is not on any public index, so a hard dependency makes the addon
+uninstallable for everyone who does not already hold the bundle. Implement the Protocol structurally
+(the four methods are the whole contract) and declare the engine you target in `addon.json`:
 
 ```toml
 [project]
 name = "yourorg-doc-archive-addon"
 requires-python = ">=3.11"
-dependencies = ["algovoi-doc-archive>=0.1.6"]
+dependencies = []                      # no engine, no provider SDK
+
+[project.optional-dependencies]
+aws = ["boto3>=1.34"]                  # provider SDKs go here, never in base dependencies
 ```
+
+```json
+{
+  "engine": {"distribution": "algovoi-doc-archive", "specifier": ">=0.1.6"}
+}
+```
+
+An addon **shipped inside the bundle** is the exception: there the engine is present by construction and
+declaring `algovoi-doc-archive>=0.1.6` is correct, because the resolver orders the install.
+
+Manifest schema version 1 requires a wheel distributed outside an index to be pinned by bytes:
+`wheel_url` must be `https://` and must carry `wheel_sha256` (64 lower-case hex). A URL without a digest
+binds a manifest to whatever the host serves today.
 
 Then:
 
@@ -104,12 +139,40 @@ manifest used to describe an addon to the console.
 
 ## Licensing
 
-The engine is commercial and licence-gated: constructing its archive object without a valid licence
-fails closed by design, and **licences are per package, not per vendor** — one package accepting a
-licence says nothing about the next. Whether your own addon carries a licence of its own is your
-decision; nothing in this repository grants a right to run the engine.
+Two licences meet here, and the boundary is deliberate.
+
+- **The addons in this repository are Apache-2.0.** Copy them, fork them, ship them inside your own
+  estate. See the repository `LICENSE`.
+- **The engine is commercial and licence-gated.** Constructing its archive object without a valid licence
+  fails closed by design, and **licences are per package, not per vendor** — one package accepting a
+  licence says nothing about the next. Nothing in this repository grants a right to run the engine, and
+  an addon here carries no licence check of its own: the engine is the gate.
+
+Whether a community addon you publish carries a licence of its own is your decision.
+
+## Conformance
+
+`addons/conformance` scores every addon here against the contract semantics the engine relies on — a
+missing key is `None`, `put` is idempotent, `list_prefix` is complete, `kid` is stable, `sign` produces a
+Falcon-1024 signature that verifies. Add a factory for your provider and it is scored by the same tests:
+
+```bash
+python -m pytest addons/conformance -q
+```
 
 ## Contributing an addon
 
-Open a discussion or a pull request adding a directory under `community/` with your manifest, a README
-and a link to your published wheel. We do not vendor third-party code here.
+**In-tree first-party addons** (`addons/<distribution-name>/`) are welcome as pull requests. A pull
+request is accepted when:
+
+- `addon.json` validates against [schema/addon.json](schema/addon.json) and agrees with `pyproject.toml`;
+- `python tools/build_index.py --check` is current (run it without `--check` to regenerate);
+- the package imports without its provider SDK — SDKs are optional extras, imported inside the function
+  that uses them, and a missing SDK produces a message naming the extra;
+- it adds a factory to the conformance suite and the full suite passes;
+- `ruff` and `bandit` are clean;
+- the commit is signed off (`git commit -s`, DCO — see `CONTRIBUTING.md`).
+
+**Community addons** stay external: open a discussion or a pull request adding a directory under
+`community/` with your manifest, a README and a link to your published wheel. We do not vendor
+third-party code here.

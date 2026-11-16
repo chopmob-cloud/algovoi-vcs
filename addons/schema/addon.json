@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://algovoi.co.uk/schemas/vcs-addon.json",
+  "$id": "https://algovoi.co.uk/schemas/vcs-addon-v1.json",
   "title": "AlgoVoi VCS addon manifest",
-  "description": "Describes an addon wheel for the Verifiable Archive engine: what it implements, which engine version it targets, and where the wheel lives. Schema version 0 (draft).",
+  "description": "Describes an addon wheel for the Verifiable Archive engine: what it implements, which engine version it targets, and where the wheel lives. Schema version 1: wheel_url now requires wheel_sha256, URLs must be https, and the $id carries the version. Version strings are validated as a PEP 440 release-shaped subset (epoch, release, pre, post, dev, local), not by a full PEP 440 parser.",
   "type": "object",
   "required": ["name", "version", "kind", "engine"],
   "additionalProperties": false,
@@ -49,9 +49,14 @@
     },
     "homepage": { "type": "string", "format": "uri" },
     "wheel_url": {
-      "description": "Direct URL to a published wheel, if the addon is distributed outside an index.",
+      "description": "Direct URL to a published wheel, if the addon is distributed outside an index. Must be https: an index entry that resolves over plaintext installs whatever the network returns.",
       "type": "string",
       "format": "uri"
+    },
+    "wheel_sha256": {
+      "description": "Lower-case hex SHA-256 of the wheel named by wheel_url. Required when wheel_url is set, so a manifest binds the addon to exact bytes rather than to a URL.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

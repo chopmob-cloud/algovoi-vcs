@@ -1,0 +1,66 @@
+{
+  "schema": "https://algovoi.co.uk/schemas/vcs-addon-v1.json",
+  "schema_version": 1,
+  "engine": {
+    "distribution": "algovoi-doc-archive",
+    "specifier": ">=0.1.6"
+  },
+  "addons": [
+    {
+      "name": "algovoi-doc-archive-azure-blob",
+      "version": "0.1.0",
+      "kind": "storage",
+      "engine": {
+        "distribution": "algovoi-doc-archive",
+        "specifier": ">=0.1.6"
+      },
+      "entry": "algovoi_doc_archive_azure_blob:AzureBlobBackend",
+      "requires": [
+        "algovoi-doc-archive-azure-blob[azure]"
+      ],
+      "notes": "Azure Blob Storage, Azure Stack Hub and Azurite. get() returns None for an absent blob; every other failure is raised. Engine encrypts before storage, so the container holds ciphertext only.",
+      "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-azure-blob"
+    },
+    {
+      "name": "algovoi-doc-archive-azure-kv",
+      "version": "0.1.0",
+      "kind": "custody",
+      "engine": {
+        "distribution": "algovoi-doc-archive",
+        "specifier": ">=0.1.6"
+      },
+      "entry": "algovoi_doc_archive_azure_kv:AzureKeyVaultSigner",
+      "requires": [
+        "algovoi-doc-archive-azure-kv[azure]"
+      ],
+      "notes": "Envelope-wrapped Falcon-1024 signing key: AES-256-GCM under a random data key, data key wrapped by Key Vault (RSA-OAEP-256). Required because Key Vault wrapKey cannot take a 2305-byte key directly.",
+      "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-azure-kv"
+    },
+    {
+      "name": "algovoi-doc-archive-inmodule",
+      "version": "0.1.0",
+      "kind": "signer",
+      "engine": {
+        "distribution": "algovoi-doc-archive",
+        "specifier": ">=0.1.6"
+      },
+      "entry": "algovoi_doc_archive_inmodule:InModuleSigner",
+      "requires": [],
+      "notes": "Operators supply a vendor signing callable (nShield CodeSafe, Luna T-Series FALCON firmware, or a signing service). Holds no key material; never given a secret key.",
+      "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-inmodule"
+    },
+    {
+      "name": "algovoi-doc-archive-mirror",
+      "version": "0.1.0",
+      "kind": "storage",
+      "engine": {
+        "distribution": "algovoi-doc-archive",
+        "specifier": ">=0.1.6"
+      },
+      "entry": "algovoi_doc_archive_mirror:MirrorBackend",
+      "requires": [],
+      "notes": "Composes other StorageBackend implementations; no provider SDK. Writes to every backend and fails closed below quorum.",
+      "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-mirror"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "algovoi-doc-archive-inmodule",
+  "version": "0.1.0",
+  "kind": "signer",
+  "engine": {
+    "distribution": "algovoi-doc-archive",
+    "specifier": ">=0.1.6"
+  },
+  "entry": "algovoi_doc_archive_inmodule:InModuleSigner",
+  "requires": [],
+  "notes": "Operators supply a vendor signing callable (nShield CodeSafe, Luna T-Series FALCON firmware, or a signing service). Holds no key material; never given a secret key.",
+  "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-inmodule"
+}

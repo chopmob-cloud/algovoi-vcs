@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algovoi-doc-archive-azure-blob"
+version = "0.1.0"
+description = "Azure Blob Storage backend for the AlgoVoi Verifiable Archive, including Azure Stack Hub and Azurite"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[project.optional-dependencies]
+azure = ["azure-storage-blob>=12.19"]
+test = ["pytest>=8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/algovoi_doc_archive_azure_blob"]
