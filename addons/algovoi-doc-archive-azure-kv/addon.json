@@ -1,0 +1,13 @@
+{
+  "name": "algovoi-doc-archive-azure-kv",
+  "version": "0.1.0",
+  "kind": "custody",
+  "engine": {
+    "distribution": "algovoi-doc-archive",
+    "specifier": ">=0.1.6"
+  },
+  "entry": "algovoi_doc_archive_azure_kv:AzureKeyVaultSigner",
+  "requires": ["algovoi-doc-archive-azure-kv[azure]"],
+  "notes": "Envelope-wrapped Falcon-1024 signing key: AES-256-GCM under a random data key, data key wrapped by Key Vault (RSA-OAEP-256). Required because Key Vault wrapKey cannot take a 2305-byte key directly.",
+  "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-azure-kv"
+}

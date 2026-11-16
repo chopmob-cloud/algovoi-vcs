@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algovoi-doc-archive-inmodule"
+version = "0.1.0"
+description = "In-module signer for the AlgoVoi Verifiable Archive: signing is delegated to an HSM or signing service, so no private key enters the engine process"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pqcrypto>=0.4.0,<1.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/algovoi_doc_archive_inmodule"]

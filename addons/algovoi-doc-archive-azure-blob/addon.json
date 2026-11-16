@@ -1,0 +1,13 @@
+{
+  "name": "algovoi-doc-archive-azure-blob",
+  "version": "0.1.0",
+  "kind": "storage",
+  "engine": {
+    "distribution": "algovoi-doc-archive",
+    "specifier": ">=0.1.6"
+  },
+  "entry": "algovoi_doc_archive_azure_blob:AzureBlobBackend",
+  "requires": ["algovoi-doc-archive-azure-blob[azure]"],
+  "notes": "Azure Blob Storage, Azure Stack Hub and Azurite. get() returns None for an absent blob; every other failure is raised. Engine encrypts before storage, so the container holds ciphertext only.",
+  "homepage": "https://github.com/chopmob-cloud/algovoi-vcs/tree/main/addons/algovoi-doc-archive-azure-blob"
+}

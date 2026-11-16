@@ -90,12 +90,25 @@ The engine exposes two protocols you can implement in your own wheel: a **storag
 **signer**. AlgoVoi ships first-party providers for S3 (storage) and AWS KMS, PKCS#11/HSM and HashiCorp
 Vault (key custody) on the same contracts.
 
-→ [addons/README.md](addons/README.md) · [template](addons/template) · [manifest schema](addons/schema/addon.json)
+Four more addons are free and in this repository under Apache-2.0:
+
+| Addon | Kind | What it adds |
+|---|---|---|
+| [`algovoi-doc-archive-mirror`](addons/algovoi-doc-archive-mirror) | storage | Fan-out to N backends with a quorum, plus divergence detection across copies |
+| [`algovoi-doc-archive-azure-blob`](addons/algovoi-doc-archive-azure-blob) | storage | Azure Blob Storage, Azure Stack Hub and Azurite |
+| [`algovoi-doc-archive-inmodule`](addons/algovoi-doc-archive-inmodule) | signer | Signing delegated to an HSM or signing service; no key material in the engine process |
+| [`algovoi-doc-archive-azure-kv`](addons/algovoi-doc-archive-azure-kv) | custody | Falcon-1024 key envelope-wrapped by Azure Key Vault or Managed HSM |
+
+Every addon here is scored by [`addons/conformance`](addons/conformance), which asserts the contract
+semantics the engine relies on — including that a produced signature actually verifies under the public
+key.
+
+→ [addons/README.md](addons/README.md) · [template](addons/template) · [manifest schema](addons/schema/addon.json) · [index](addons/index.json)
 
 ## Scope
 
-**In this repository:** documentation source and the addon contract, template and manifest schema. Code
-here is Apache-2.0.
+**In this repository:** documentation source, the addon contract and schema, and four first-party addon
+implementations with their conformance suite and CI. Code here is Apache-2.0.
 
 **Not in this repository, by design:** the engine and component source, the encrypted `.algv`
 deliverable, the extractor's trust material, licence-signing keys, and any key-custody material. The

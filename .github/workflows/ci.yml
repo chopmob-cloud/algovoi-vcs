@@ -1,0 +1,65 @@
+name: addons
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install test and lint tooling
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # pqcrypto is capped below 1.0 deliberately: 1.0.0 removed the Falcon-1024 API this suite
+          # signs with, and an unbounded install fails at first use rather than at install time.
+          python -m pip install pytest "ruff==0.6.9" bandit cryptography "pqcrypto>=0.4.0,<1.0"
+          shopt -s nullglob
+          addons=()
+          while IFS= read -r pyproject; do addons+=("$(dirname "$pyproject")"); done \
+            < <(find addons -mindepth 2 -maxdepth 2 -name pyproject.toml | sort)
+          if [ ${#addons[@]} -eq 0 ]; then echo "no addons found"; exit 1; fi
+          for addon in "${addons[@]}"; do
+            python -m pip install --no-deps -e "$addon"
+          done
+
+      - name: Manifest index is current
+        run: python tools/build_index.py --check
+
+      - name: Lint
+        run: python -m ruff check addons tools
+
+      - name: Security scan
+        run: python -m bandit -q -r addons/*/src tools --exclude tools/tests
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Build every wheel
+        run: |
+          set -euo pipefail
+          python -m pip install build
+          shopt -s nullglob
+          addons=()
+          while IFS= read -r pyproject; do addons+=("$(dirname "$pyproject")"); done \
+            < <(find addons -mindepth 2 -maxdepth 2 -name pyproject.toml | sort)
+          if [ ${#addons[@]} -eq 0 ]; then echo "no addons found"; exit 1; fi
+          for addon in "${addons[@]}"; do
+            python -m build --wheel --outdir dist "$addon"
+          done
+          ls -l dist
