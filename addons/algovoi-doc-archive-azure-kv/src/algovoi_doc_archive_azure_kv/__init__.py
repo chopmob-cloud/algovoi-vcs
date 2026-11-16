@@ -29,7 +29,9 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+import time
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -72,20 +74,42 @@ def _zeroize(buf: Any) -> None:
 def _response_bytes(response: Any, what: str) -> bytes:
     """Normalise a Key Vault response to bytes.
 
-    ``CryptographyClient`` returns an object carrying the value on ``.key`` for wrap/unwrap; some
-    versions and wrappers return bytes directly. Accept both, refuse anything else rather than
-    guessing.
+    The shapes differ by operation and by SDK version: ``wrap_key`` returns ``WrapResult`` carrying
+    ``.encrypted_key``, ``unwrap_key`` returns ``UnwrapResult`` carrying ``.key``, and some wrappers
+    return bytes directly. Accept all three, refuse anything else rather than guessing.
     """
     if isinstance(response, (bytes, bytearray, memoryview)):
         return bytes(response)
-    inner = getattr(response, "key", None)
-    if isinstance(inner, (bytes, bytearray, memoryview)):
-        return bytes(inner)
-    raise AzureKeyVaultError(f"key vault returned no usable {what} (got {type(response).__name__})")
+    for attribute in ("encrypted_key", "key", "value"):
+        inner = getattr(response, attribute, None)
+        if isinstance(inner, (bytes, bytearray, memoryview)):
+            return bytes(inner)
+    raise AzureKeyVaultError(
+        f"key vault returned no usable {what} (got {type(response).__name__} with "
+        f"{[a for a in ('encrypted_key', 'key', 'value') if hasattr(response, a)]})"
+    )
 
 
 def _aad(public_key: bytes) -> bytes:
     return _AAD_LABEL + hashlib.sha256(public_key).digest()
+
+
+@lru_cache(maxsize=8)
+def _sdk_algorithm(algorithm: str) -> Any:
+    """Return the SDK's ``KeyWrapAlgorithm`` when the SDK is installed, else the given string.
+
+    The SDK decides between a local and a service operation by inspecting the algorithm. Handed a bare
+    string it still works but logs a warning and attempts the local path first; handed its own enum it
+    goes straight to the vault.
+    """
+    try:
+        from azure.keyvault.keys.crypto import KeyWrapAlgorithm
+    except ImportError:  # a non-Azure client, or the SDK is genuinely absent
+        return algorithm
+    try:
+        return KeyWrapAlgorithm(algorithm)
+    except ValueError:
+        return algorithm
 
 
 def _falcon_sign(secret_key: bytes, message: bytes) -> bytes:
@@ -143,7 +167,7 @@ def wrap_secret_key(
     dek = bytearray(secrets.token_bytes(_DEK_BYTES))
     try:
         wrapped = _response_bytes(
-            crypto_client.wrap_key(algorithm=algorithm, key=bytes(dek)), "wrapped key"
+            crypto_client.wrap_key(algorithm=_sdk_algorithm(algorithm), key=bytes(dek)), "wrapped key"
         )
         if not wrapped:
             raise AzureKeyVaultError("key vault returned an empty wrapped key")
@@ -199,6 +223,7 @@ class AzureKeyVaultSigner:
         algorithm: str = DEFAULT_ALGORITHM,
         sign_fn: Callable[[bytes, bytes], bytes] | None = None,
         probe: Callable[[], bool] | None = None,
+        probe_ttl: float = 60.0,
         public_key_bytes: int | None = FALCON_1024_PUBLIC_KEY_BYTES,
         secret_key_bytes: int | None = FALCON_1024_SECRET_KEY_BYTES,
     ) -> None:
@@ -217,6 +242,8 @@ class AzureKeyVaultSigner:
             raise TypeError("sign_fn must be callable")
         if probe is not None and not callable(probe):
             raise TypeError("probe must be callable when supplied")
+        if probe_ttl < 0:
+            raise ValueError("probe_ttl must be zero or positive")
 
         # Fail at construction, not mid-chain: a malformed blob must not become a half-written entry.
         parse_secret_key_blob(wrapped_secret_key)
@@ -228,6 +255,9 @@ class AzureKeyVaultSigner:
         self._kid = kid or hashlib.sha256(pk).hexdigest()[:16]
         self._sign_fn = sign_fn or _falcon_sign
         self._probe = probe
+        self._probe_ttl = float(probe_ttl)
+        self._probe_at = 0.0
+        self._probe_ok: bool | None = None
         self._secret_key_bytes = secret_key_bytes
         self._aad = _aad(pk)
 
@@ -238,36 +268,44 @@ class AzureKeyVaultSigner:
         return self._kid
 
     def can_sign(self) -> bool:
-        """Live check: the key must be reachable **and** enabled.
+        """Live capability check, answered by a real operation against the vault.
 
-        ``get_key()`` succeeds for a disabled key, so its presence alone is not a capability. A client
-        that exposes no ``get_key`` cannot be probed; it reports True, which is a configuration fact —
-        pass ``probe`` for a real liveness signal.
+        ``CryptographyClient`` exposes no metadata call — there is no ``get_key()`` on it — so a
+        presence check cannot be written. This wraps a throwaway 32-byte buffer with the key instead:
+        the operation the signer actually depends on, refused if the key is disabled, deleted,
+        unreachable, or missing its wrap permission. The result is cached for ``probe_ttl`` seconds so
+        a readiness probe does not become a load source.
+
+        Pass ``probe`` to use your own liveness signal instead; a custom probe is called on every
+        ``can_sign()`` and is not cached, because it owns its own cost model. The built-in check is an
+        ordinary vault operation, so it appears in the vault's audit log and counts against its rate
+        limits once per ``probe_ttl`` second — that is the price of answering with an operation instead
+        of a metadata read.
         """
         if self._probe is not None:
             try:
                 return bool(self._probe())
             except Exception:  # noqa: BLE001 - an unavailable vault is "cannot sign now"
                 return False
-        get_key = getattr(self._client, "get_key", None)
-        if get_key is None:
-            # No liveness signal available. Reporting True would be reporting configuration as a
-            # capability, which is exactly what a "can sign now" check must not do; pass probe= when
-            # the client cannot be queried.
-            return False
+        now = time.monotonic()
+        if self._probe_ok is not None and (now - self._probe_at) < self._probe_ttl:
+            return self._probe_ok
         try:
-            key = get_key()
-        except Exception:  # noqa: BLE001
-            return False
-        enabled = getattr(key, "enabled", None)
-        if enabled is None:
-            enabled = getattr(getattr(key, "properties", None), "enabled", None)
-        return enabled is not False
+            self._client.wrap_key(
+                algorithm=_sdk_algorithm(self._algorithm), key=secrets.token_bytes(32)
+            )
+            ok = True
+        except Exception:  # noqa: BLE001 - any refusal is "cannot sign now"
+            ok = False
+        self._probe_ok, self._probe_at = ok, now
+        return ok
 
     def _unwrap(self) -> bytearray:
         wrapped, nonce, ciphertext = parse_secret_key_blob(self._wrapped)
         try:
-            response = self._client.unwrap_key(algorithm=self._algorithm, encrypted_key=wrapped)
+            response = self._client.unwrap_key(
+                algorithm=_sdk_algorithm(self._algorithm), encrypted_key=wrapped
+            )
         except Exception as exc:
             raise AzureKeyVaultError(f"key vault unwrap failed: {_redact(exc)}") from exc
         dek = bytearray(_response_bytes(response, "unwrapped data key"))

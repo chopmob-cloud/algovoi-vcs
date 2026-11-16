@@ -20,6 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 azure = ["azure-keyvault-keys>=4.8", "azure-identity>=1.15"]
 test = ["pytest>=8", "azure-keyvault-keys>=4.8"]
+integration = ["pytest>=8", "azure-keyvault-keys>=4.8", "pqcrypto>=0.4.0,<1.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/algovoi_doc_archive_azure_kv"]

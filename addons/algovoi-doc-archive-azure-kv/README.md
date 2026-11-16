@@ -61,10 +61,10 @@ archive = Archive(signer=signer, storage=..., encryptor=...)
   construction, not halfway through writing a chain.
 - `AzureKeyVaultError` covers a vault failure, a failed GCM authentication (wrong key, wrong public key,
   damaged blob) and a wrong-length unwrapped key. Vault error text is redacted before it is embedded.
-- `can_sign` calls `get_key()` and returns `False` when the key is present but `enabled` is `False` —
-  a metadata read succeeds for a disabled key, so presence alone is not a capability. A client that
-  cannot be probed (no `get_key`) returns `False` rather than reporting configuration as a capability;
-  pass `probe=` to supply the liveness signal in that case.
+- `can_sign` performs a real **wrap round-trip** against the vault: `CryptographyClient` has no
+  metadata call, so a presence check is not writable. The result is cached for `probe_ttl` seconds
+  (default 60) because the check is an auditable vault operation; pass `probe=` for your own signal,
+  which is called every time and is not cached.
 - `kid` derives as `sha256(public_key)[:16]`, byte-identical to `algovoi_doc_archive.signing.kid_for`.
 
 ## Limitation, stated rather than hidden
@@ -86,6 +86,26 @@ it is never given a secret key.
 ```bash
 python -m pytest addons/algovoi-doc-archive-azure-kv addons/conformance -q
 ```
+
+### Integration tests against Lowkey Vault
+
+The unit tests drive a local RSA double, which cannot prove the SDK's response shapes or its challenge
+flow. These run against a real Key Vault API surface:
+
+```bash
+docker run -d --name lowkey -p 8443:8443 nagyesta/lowkey-vault:7.3.48-ubi10-minimal
+pip install 'algovoi-doc-archive-azure-kv[integration]'
+LOWKEY_VAULT_URL=https://localhost:8443 \
+    python -m pytest addons/algovoi-doc-archive-azure-kv -m integration -q
+```
+
+They found a defect the double could not: the current SDK returns `WrapResult.encrypted_key` for a wrap
+and `UnwrapResult.key` for an unwrap, and this adapter only understood `.key`. The double now models the
+real shapes, so the same slip fails in the portable suite.
+
+Emulator-only concessions are confined to the test file: `connection_verify=False` (self-signed
+certificate), `verify_challenge_resource=False` (localhost authority) and a static token credential. No
+production path in this addon disables TLS verification.
 
 `algovoi_doc_archive_azure_kv.testing.LocalRsaCryptoClient` performs real RSA-OAEP wrap/unwrap locally, so
 the envelope, the associated-data binding and the zeroize path are exercised against real Falcon

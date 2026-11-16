@@ -161,16 +161,62 @@ def test_sign_rejects_non_bytes(keypair, client) -> None:
         signer.sign("text")  # type: ignore[arg-type]
 
 
-def test_can_sign_is_live(keypair, client) -> None:
+def test_can_sign_runs_a_real_operation(keypair, client) -> None:
     pk, sk = keypair
     blob = wrap_secret_key(sk, pk, client)
     assert AzureKeyVaultSigner(pk, blob, crypto_client=client).can_sign() is True
 
     class Revoked(LocalRsaCryptoClient):
-        def get_key(self) -> None:
+        def wrap_key(self, *, algorithm: str, key: bytes):
             raise PermissionError("key disabled")
 
     assert AzureKeyVaultSigner(pk, blob, crypto_client=Revoked()).can_sign() is False
+
+
+def test_can_sign_is_cached_for_the_ttl(keypair) -> None:
+    pk, sk = keypair
+    client = LocalRsaCryptoClient()
+    blob = wrap_secret_key(sk, pk, client)
+    signer = AzureKeyVaultSigner(pk, blob, crypto_client=client, probe_ttl=60)
+    client.calls.clear()
+    assert signer.can_sign() is True
+    assert signer.can_sign() is True
+    assert sum(1 for call in client.calls if call.startswith("wrap:")) == 1
+
+
+def test_can_sign_reprobes_after_the_ttl(keypair) -> None:
+    pk, sk = keypair
+    client = LocalRsaCryptoClient()
+    blob = wrap_secret_key(sk, pk, client)
+    signer = AzureKeyVaultSigner(pk, blob, crypto_client=client, probe_ttl=0)
+    client.calls.clear()
+    assert signer.can_sign() is True
+    assert signer.can_sign() is True
+    assert sum(1 for call in client.calls if call.startswith("wrap:")) == 2
+
+
+def test_a_negative_probe_ttl_is_refused(keypair, client) -> None:
+    pk, sk = keypair
+    blob = wrap_secret_key(sk, pk, client)
+    with pytest.raises(ValueError):
+        AzureKeyVaultSigner(pk, blob, crypto_client=client, probe_ttl=-1)
+
+
+def test_can_sign_works_with_a_client_that_has_no_metadata_call(keypair) -> None:
+    """``CryptographyClient`` has no ``get_key()``; a capability check built on metadata would report
+    "cannot sign" for a healthy key. Only ``wrap_key`` is required."""
+    pk, sk = keypair
+    client = LocalRsaCryptoClient()
+    blob = wrap_secret_key(sk, pk, client)
+
+    class WrapOnly:
+        def __init__(self, inner: LocalRsaCryptoClient) -> None:
+            self._inner = inner
+
+        def wrap_key(self, *, algorithm: str, key: bytes):
+            return self._inner.wrap_key(algorithm=algorithm, key=key)
+
+    assert AzureKeyVaultSigner(pk, blob, crypto_client=WrapOnly(client)).can_sign() is True
 
 
 def test_probe_overrides_the_default_liveness_check(keypair, client) -> None:
@@ -226,39 +272,13 @@ def test_a_wrap_failure_adds_no_extra_copy_of_the_secret_key(keypair) -> None:
         frame = frame.tb_next
 
 
-def test_can_sign_is_false_for_a_disabled_key(keypair, client) -> None:
-    import types
-
-    pk, sk = keypair
-    blob = wrap_secret_key(sk, pk, client)
-
-    class Disabled(LocalRsaCryptoClient):
-        def get_key(self):
-            return types.SimpleNamespace(enabled=False)
-
-    assert AzureKeyVaultSigner(pk, blob, crypto_client=Disabled()).can_sign() is False
-
-
-def test_can_sign_reads_enabled_from_properties_when_present(keypair, client) -> None:
-    import types
-
-    pk, sk = keypair
-    blob = wrap_secret_key(sk, pk, client)
-
-    class Disabled(LocalRsaCryptoClient):
-        def get_key(self):
-            return types.SimpleNamespace(properties=types.SimpleNamespace(enabled=False))
-
-    assert AzureKeyVaultSigner(pk, blob, crypto_client=Disabled()).can_sign() is False
-
-
-def test_can_sign_is_false_when_the_client_cannot_be_probed(keypair) -> None:
-    """No probe and no metadata read is not evidence of a capability, so it does not report one."""
+def test_can_sign_is_false_when_the_vault_refuses(keypair) -> None:
+    """A refusal of the operation — not a missing metadata call — is what "cannot sign" means."""
     pk, sk = keypair
 
     class NoProbe:
         def wrap_key(self, *, algorithm: str, key: bytes):
-            raise AssertionError("not used")
+            raise PermissionError("key is disabled")
 
         def unwrap_key(self, *, algorithm: str, encrypted_key: bytes):
             raise AssertionError("not used")
@@ -282,3 +302,49 @@ def test_vault_error_text_is_redacted(keypair) -> None:
         AzureKeyVaultSigner(pk, blob, crypto_client=Leaky()).sign(b"m")
     assert "SUPERSECRETVALUE" not in str(err.value)
     assert "sig=<redacted>" in str(err.value)
+
+
+def test_a_wrap_result_carrying_encrypted_key_is_accepted(keypair) -> None:
+    """The current SDK returns ``WrapResult.encrypted_key``, not ``.key``. A double that returns
+    ``.key`` for both operations hides that, which is how this was found against a real vault."""
+    import types
+
+    pk, sk = keypair
+    rsa = LocalRsaCryptoClient()
+    wrapped = rsa._public.encrypt(b"k" * 32, rsa._padding)
+
+    class WrapResultOnly:
+        def wrap_key(self, *, algorithm: str, key: bytes):
+            return types.SimpleNamespace(encrypted_key=wrapped)
+
+    blob = wrap_secret_key(sk, pk, WrapResultOnly())
+    assert blob.startswith(b"AVKV")
+
+
+def test_plain_bytes_responses_are_accepted(keypair) -> None:
+    pk, sk = keypair
+
+    class BytesClient(LocalRsaCryptoClient):
+        def wrap_key(self, *, algorithm: str, key: bytes) -> bytes:
+            return super().wrap_key(algorithm=algorithm, key=key).encrypted_key
+
+        def unwrap_key(self, *, algorithm: str, encrypted_key: bytes) -> bytes:
+            return super().unwrap_key(algorithm=algorithm, encrypted_key=encrypted_key).key
+
+    client = BytesClient()
+    signer = AzureKeyVaultSigner(pk, wrap_secret_key(sk, pk, client), crypto_client=client)
+    assert verify(pk, b"m", signer.sign(b"m")) is True
+
+
+def test_a_response_with_no_usable_bytes_is_refused(keypair) -> None:
+    import types
+
+    pk, sk = keypair
+
+    class Empty:
+        def wrap_key(self, *, algorithm: str, key: bytes):
+            return types.SimpleNamespace(nothing=b"x")
+
+    with pytest.raises(AzureKeyVaultError) as err:
+        wrap_secret_key(sk, pk, Empty())
+    assert "no usable wrapped key" in str(err.value)
