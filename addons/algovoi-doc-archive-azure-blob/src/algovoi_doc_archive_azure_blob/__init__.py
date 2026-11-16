@@ -64,6 +64,26 @@ def _is_absent(exc: BaseException) -> bool:
     return getattr(exc, "error_code", None) in _ABSENT_ERROR_CODES
 
 
+def _check_connection_string(connection_string: str, *, allow_insecure: bool) -> None:
+    """Refuse a plaintext endpoint unless the caller says so explicitly.
+
+    ``UseDevelopmentStorage=true`` and ``DefaultEndpointsProtocol=http`` both mean Azurite or another
+    emulator: correct for a test, wrong for an estate. An operator has to write ``allow_insecure=True``
+    for that, so plaintext archive traffic cannot arrive by accident.
+    """
+    if allow_insecure:
+        return
+    lowered = connection_string.lower().replace(" ", "")
+    plaintext = lowered.startswith("usedevelopmentstorage=true") or re.search(
+        r"defaultendpointsprotocol=http(;|$)", lowered
+    )
+    if plaintext:
+        raise ValueError(
+            "connection_string selects a plaintext (http) endpoint; pass allow_insecure=True only for "
+            "an emulator such as Azurite"
+        )
+
+
 def _check_key(key: str) -> str:
     if not isinstance(key, str):
         raise TypeError(f"key must be str, got {type(key).__name__}")
@@ -102,6 +122,7 @@ class AzureBlobBackend:
         account_url: str | None = None,
         credential: Any | None = None,
         container_client: Any | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         if not isinstance(container, str) or not container:
             raise ValueError("container must be a non-empty str")
@@ -112,6 +133,8 @@ class AzureBlobBackend:
                 "account_url must be https:// — a plaintext endpoint would put archive traffic and "
                 "credentials on the wire in clear"
             )
+        if connection_string is not None:
+            _check_connection_string(connection_string, allow_insecure=allow_insecure)
         self._container = container
         self._prefix = prefix if not prefix or prefix.endswith("/") else prefix + "/"
         self._connection_string = connection_string
@@ -198,7 +221,9 @@ class AzureBlobBackend:
         return self._container_client().download_blob(name).readall()
 
     def _properties(self, name: str) -> None:
-        self._container_client().get_blob_properties(name)
+        # get_blob_properties is on BlobClient, not ContainerClient — a double that puts it on the
+        # container will pass every unit test and fail on the first real request.
+        self._container_client().get_blob_client(name).get_blob_properties()
 
     def _list(self, scope: str) -> list[str]:
         return [

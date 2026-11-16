@@ -44,6 +44,18 @@ class _BlobEntry:
         self.name = name
 
 
+class _BlobClient:
+    """Stands in for ``BlobClient``: the real SDK puts ``get_blob_properties`` here, not on the
+    container client, so the double must too."""
+
+    def __init__(self, container: InMemoryContainerClient, name: str) -> None:
+        self._container = container
+        self._name = name
+
+    def get_blob_properties(self) -> _BlobProps:
+        return self._container.get_blob_properties(self._name)
+
+
 class InMemoryContainerClient:
     """Minimal stand-in for ``ContainerClient`` backed by a dict.
 
@@ -87,6 +99,10 @@ class InMemoryContainerClient:
         if name not in self.blobs:
             raise BlobNotFound(f"The specified blob does not exist: {name}")
         return _BlobProps(name, len(self.blobs[name]))
+
+    def get_blob_client(self, name: str) -> _BlobClient:
+        self.calls.append(("get_blob_client", name))
+        return _BlobClient(self, name)
 
     def list_blobs(self, name_starts_with: str = "") -> Iterable[_BlobEntry]:
         self.calls.append(("list_blobs", name_starts_with))
