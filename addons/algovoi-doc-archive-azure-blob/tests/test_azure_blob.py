@@ -363,6 +363,56 @@ def test_a_plaintext_account_url_is_refused() -> None:
         AzureBlobBackend("evidence", account_url="http://acct.blob.core.windows.net")
 
 
+def test_a_development_connection_string_needs_an_explicit_opt_in() -> None:
+    """Azurite over http is right for a test and wrong for an estate, so it takes a written flag."""
+    with pytest.raises(ValueError):
+        AzureBlobBackend("evidence", connection_string="UseDevelopmentStorage=true")
+    with pytest.raises(ValueError):
+        AzureBlobBackend(
+            "evidence",
+            connection_string="DefaultEndpointsProtocol=http;AccountName=a;AccountKey=k",
+        )
+    assert AzureBlobBackend(
+        "evidence", connection_string="UseDevelopmentStorage=true", allow_insecure=True
+    )
+
+
+def test_an_https_connection_string_needs_no_opt_in() -> None:
+    AzureBlobBackend(
+        "evidence",
+        connection_string="DefaultEndpointsProtocol=https;AccountName=a;AccountKey=k;"
+        "EndpointSuffix=core.windows.net",
+    )
+
+
+def test_exists_uses_the_real_sdk_shape() -> None:
+    """``get_blob_properties`` is on BlobClient, not ContainerClient. A double that puts it on the
+    container passes every other test and fails on the first real request, so this fake exposes only
+    the calls the SDK actually offers."""
+    from algovoi_doc_archive_azure_blob.testing import BlobNotFound
+
+    class BlobClient:
+        def __init__(self, container: StrictContainer, name: str) -> None:
+            self._container = container
+            self._name = name
+
+        def get_blob_properties(self) -> object:
+            if self._name not in self._container.blobs:
+                raise BlobNotFound("The specified blob does not exist")
+            return object()
+
+    class StrictContainer:
+        def __init__(self) -> None:
+            self.blobs = {"k": b"v"}
+
+        def get_blob_client(self, name: str) -> BlobClient:
+            return BlobClient(self, name)
+
+    b = AzureBlobBackend("evidence", container_client=StrictContainer())
+    assert run(b.exists("k")) is True
+    assert run(b.exists("nope")) is False
+
+
 def test_upload_error_text_is_redacted() -> None:
     class Leaky(InMemoryContainerClient):
         def upload_blob(self, name: str, data: bytes, overwrite: bool = False,

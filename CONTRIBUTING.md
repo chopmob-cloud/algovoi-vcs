@@ -28,6 +28,9 @@ A pull request adding or changing an addon is accepted when all of these hold:
    `addons/conformance/tests/test_contract.py`; a storage factory takes no arguments, a signer factory
    takes `(public_key, secret_key)`.
 4. **The gate is green.** `python -m pytest -q`, `ruff check addons tools`, `bandit -q -r addons/*/src tools`.
+   Tests that need a live service are marked `integration` and deselected by default; run them with
+   `-m integration` and the emulator up (see the addon READMEs). A test that needs a service must not
+   be skipped in the portable run — deselect it and run it separately, so a skip never reads as a pass.
 5. **The commit is signed off.** `git commit -s` adds the DCO line; contributions are accepted under the
    Developer Certificate of Origin 1.1, and the repository licence is Apache-2.0.
 

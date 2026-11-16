@@ -65,6 +65,27 @@ verify it.
 python -m pytest addons/algovoi-doc-archive-azure-blob addons/conformance -q
 ```
 
+### Integration tests against Azurite
+
+The unit tests drive an injected client, which cannot prove the SDK's own 404 semantics. These run
+against a real Azure Storage endpoint:
+
+```bash
+docker run -d --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite \
+    azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+pip install 'algovoi-doc-archive-azure-blob[integration]'
+AZURITE_CONNECTION_STRING='UseDevelopmentStorage=true' \
+    python -m pytest addons/algovoi-doc-archive-azure-blob -m integration -q
+```
+
+They are marked `integration` and deselected from the portable gate. The Azurite account key is
+Microsoft's published development key — public by design, not a credential. A plaintext endpoint needs
+`allow_insecure=True` at construction, so the emulator cannot be reached by accident from an estate.
+
+These found a defect the double could not: `get_blob_properties` belongs to `BlobClient`, not
+`ContainerClient`. The unit suite now includes a strict fake that exposes only the calls the real SDK
+offers, so the same slip fails without an emulator.
+
 `algovoi_doc_archive_azure_blob.testing.InMemoryContainerClient` is a shipped double for the four Azure
-client calls this backend makes; it is what the suite drives, so the full key-mapping and
+client calls this backend makes; it is what the portable suite drives, so the full key-mapping and
 absent-versus-damaged paths are exercised without a subscription.

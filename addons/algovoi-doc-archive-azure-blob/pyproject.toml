@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 azure = ["azure-storage-blob>=12.19"]
 test = ["pytest>=8"]
+integration = ["pytest>=8", "azure-storage-blob>=12.19"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/algovoi_doc_archive_azure_blob"]
