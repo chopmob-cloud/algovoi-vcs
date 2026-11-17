@@ -16,6 +16,15 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 
 class _Wrapped:
+    """Stands in for ``WrapResult``: the current SDK carries the ciphertext on ``encrypted_key``."""
+
+    def __init__(self, encrypted_key: bytes) -> None:
+        self.encrypted_key = encrypted_key
+
+
+class _Unwrapped:
+    """Stands in for ``UnwrapResult``, which carries the plaintext on ``key``."""
+
     def __init__(self, key: bytes) -> None:
         self.key = key
 
@@ -46,9 +55,9 @@ class LocalRsaCryptoClient:
         self.calls.append(f"wrap:{algorithm}")
         return _Wrapped(self._public.encrypt(bytes(key), self._padding))
 
-    def unwrap_key(self, *, algorithm: str, encrypted_key: bytes) -> _Wrapped:
+    def unwrap_key(self, *, algorithm: str, encrypted_key: bytes) -> _Unwrapped:
         self.calls.append(f"unwrap:{algorithm}")
-        return _Wrapped(self._private.decrypt(bytes(encrypted_key), self._padding))
+        return _Unwrapped(self._private.decrypt(bytes(encrypted_key), self._padding))
 
     def get_key(self) -> None:
         self.calls.append("get_key")
