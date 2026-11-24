@@ -1,5 +1,8 @@
 # AlgoVoi VCS — documentation and addons
 
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 Documentation and extension points for the **AlgoVoi Verifiable Compliance Suite** — the verifiable
 long-term data estate for regulated sectors: health, insurance, defence, and any records that must stay
 provably intact and confidential for decades.
